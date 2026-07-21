@@ -1,9 +1,41 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Image Tuning">
-  <rect x="5" y="5" width="54" height="54" rx="13" fill="#C42026"/>
-  <rect x="14" y="14" width="36" height="28" rx="6" fill="none" stroke="#FFFFFF" stroke-width="4"/>
-  <circle cx="24" cy="23" r="3" fill="#FFFFFF"/>
-  <path d="M18 36l8-8 6 6 5-5 9 9" fill="none" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M16 49h32M16 55h32" fill="none" stroke="#FFFFFF" stroke-width="3.5" stroke-linecap="round"/>
-  <circle cx="28" cy="49" r="4" fill="#C42026" stroke="#FFFFFF" stroke-width="3"/>
-  <circle cx="39" cy="55" r="4" fill="#C42026" stroke="#FFFFFF" stroke-width="3"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" role="img" aria-label="Image Tuning">
+  <defs>
+    <linearGradient id="blue" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#1688F5"/>
+      <stop offset="1" stop-color="#075BC8"/>
+    </linearGradient>
+    <linearGradient id="greenLight" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#75C83B"/>
+      <stop offset="1" stop-color="#138936"/>
+    </linearGradient>
+    <linearGradient id="greenDark" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#189B55"/>
+      <stop offset="1" stop-color="#006239"/>
+    </linearGradient>
+    <linearGradient id="orange" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#FFAA27"/>
+      <stop offset="1" stop-color="#F05A0B"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="5" stdDeviation="5" flood-color="#10213A" flood-opacity=".2"/>
+    </filter>
+  </defs>
+
+  <rect x="4" y="4" width="184" height="184" rx="43" fill="#FFFFFF" stroke="#E7E9ED" stroke-width="2"/>
+
+  <g filter="url(#shadow)">
+    <rect x="27" y="33" width="127" height="114" rx="22" fill="url(#blue)"/>
+    <rect x="42" y="48" width="97" height="84" rx="12" fill="#F9FBFF"/>
+    <circle cx="62" cy="67" r="12" fill="#FFB815"/>
+    <path d="M44 113 73 83c4-4 9-4 13 0l21 22 18 19H44Z" fill="url(#greenLight)"/>
+    <path d="m78 111 33-39c4-5 10-5 14 0l14 16v44H96Z" fill="url(#greenDark)"/>
+  </g>
+
+  <g transform="rotate(-43 129 125)" filter="url(#shadow)">
+    <path d="M126 50c0-7 5-13 12-13s12 6 12 13v66h-24Z" fill="url(#orange)"/>
+    <rect x="124" y="108" width="28" height="25" rx="4" fill="#DCE4EF"/>
+    <path d="M124 114h28v7h-28Z" fill="#A8B6C8"/>
+    <path d="M124 130c0 13-7 27-14 35-4 5-2 10 5 9 18-3 35-18 37-44Z" fill="#10243E"/>
+    <path d="M124 132c0 11-5 21-10 28 12-4 23-15 29-28Z" fill="#203A5A"/>
+  </g>
 </svg>
