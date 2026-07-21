@@ -3,12 +3,21 @@ import type { AppState, ImageObject, Point, ShapeObject, ToolId } from '../docum
 import { sampleImageColor } from '../image-processing/colorAnalysis';
 import { createId } from '../utils/ids';
 import { drawShape } from './drawShape';
+import {
+  getHandlePoints,
+  getShapeBounds,
+  hitResizeHandle,
+  resizeShapeBounds,
+  type ResizeHandle,
+  type ShapeBounds,
+} from './resize';
 
 export type ViewportSnapshot = { zoom: number; offsetX: number; offsetY: number };
 type Drag =
   | { mode: 'pan'; pointerId: number; start: Point; ox: number; oy: number }
   | { mode: 'image'; pointerId: number; id: string; start: Point; ox: number; oy: number; dx: number; dy: number }
   | { mode: 'shape-move'; pointerId: number; id: string; start: Point; ox: number; oy: number; dx: number; dy: number }
+  | { mode: 'shape-resize'; pointerId: number; id: string; handle: ResizeHandle; original: ShapeBounds; draft: { x: number; y: number; width: number; height: number } }
   | { mode: 'shape-new'; pointerId: number; shape: ShapeObject };
 
 export type CanvasEngineOptions = {
@@ -157,9 +166,9 @@ export class CanvasEngine {
         ctx.drawImage(image, draft?.dx ?? entry.item.x, draft?.dy ?? entry.item.y, entry.item.width, entry.item.height);
         ctx.restore();
       } else {
-        const shown = this.drag?.mode === 'shape-move' && this.drag.id === entry.item.id
-          ? { ...entry.item, x: this.drag.dx, y: this.drag.dy }
-          : entry.item;
+        let shown = entry.item;
+        if (this.drag?.mode === 'shape-move' && this.drag.id === entry.item.id) shown = { ...entry.item, x: this.drag.dx, y: this.drag.dy };
+        if (this.drag?.mode === 'shape-resize' && this.drag.id === entry.item.id) shown = { ...entry.item, ...this.drag.draft };
         drawShape(ctx, shown, this.viewport.zoom);
       }
     }
@@ -172,13 +181,13 @@ export class CanvasEngine {
         ? documentData.images.find((item) => item.id === selection.id)
         : documentData.shapes.find((item) => item.id === selection.id);
       if (box) {
-        const drag = this.drag;
-        if (selection.type === 'image' && drag?.mode === 'image' && drag.id === selection.id) {
-          this.drawSelection(drag.dx, drag.dy, box.width, box.height);
-        } else if (selection.type === 'shape' && drag?.mode === 'shape-move' && drag.id === selection.id) {
-          this.drawSelection(drag.dx, drag.dy, box.width, box.height);
-        } else {
-          this.drawSelection(box.x, box.y, box.width, box.height);
+        let shown = box;
+        if (selection.type === 'image' && this.drag?.mode === 'image' && this.drag.id === selection.id) shown = { ...box, x: this.drag.dx, y: this.drag.dy };
+        if (selection.type === 'shape' && this.drag?.mode === 'shape-move' && this.drag.id === selection.id) shown = { ...box, x: this.drag.dx, y: this.drag.dy };
+        if (selection.type === 'shape' && this.drag?.mode === 'shape-resize' && this.drag.id === selection.id) shown = { ...box, ...this.drag.draft };
+        this.drawSelection(shown.x, shown.y, shown.width, shown.height);
+        if (selection.type === 'shape' && (shown as ShapeObject).type !== 'pen' && !shown.locked) {
+          this.drawResizeHandles(getShapeBounds(shown));
         }
       }
     }
@@ -195,11 +204,28 @@ export class CanvasEngine {
   }
 
   private drawSelection(x: number, y: number, width: number, height: number) {
+    const bounds = getShapeBounds({ x, y, width, height });
     this.ctx.save();
     this.ctx.strokeStyle = '#c42026';
     this.ctx.lineWidth = 2 / this.viewport.zoom;
     this.ctx.setLineDash([8 / this.viewport.zoom, 5 / this.viewport.zoom]);
-    this.ctx.strokeRect(x, y, width, height);
+    this.ctx.strokeRect(bounds.left, bounds.top, bounds.right - bounds.left, bounds.bottom - bounds.top);
+    this.ctx.restore();
+  }
+
+  private drawResizeHandles(bounds: ShapeBounds) {
+    const size = 9 / this.viewport.zoom;
+    this.ctx.save();
+    this.ctx.setLineDash([]);
+    this.ctx.lineWidth = 2 / this.viewport.zoom;
+    this.ctx.strokeStyle = '#c42026';
+    this.ctx.fillStyle = '#ffffff';
+    Object.values(getHandlePoints(bounds)).forEach((point) => {
+      this.ctx.beginPath();
+      this.ctx.rect(point.x - size / 2, point.y - size / 2, size, size);
+      this.ctx.fill();
+      this.ctx.stroke();
+    });
     this.ctx.restore();
   }
 
@@ -245,6 +271,15 @@ export class CanvasEngine {
     return null;
   }
 
+  private selectedResizeTarget(point: Point) {
+    if (!this.state || this.state.selection?.type !== 'shape') return null;
+    const shape = this.state.document.shapes.find((item) => item.id === this.state?.selection?.id);
+    if (!shape || shape.type === 'pen' || shape.locked || !shape.visible) return null;
+    const bounds = getShapeBounds(shape);
+    const handle = hitResizeHandle(point, bounds, 10 / this.viewport.zoom);
+    return handle ? { shape, bounds, handle } : null;
+  }
+
   private pickColor(point: Point) {
     if (!this.state) return;
     const imageObject = getOrderedLayers(this.state.document)
@@ -281,6 +316,20 @@ export class CanvasEngine {
       return;
     }
     if (this.tool === 'select') {
+      const resizeTarget = this.selectedResizeTarget(world);
+      if (resizeTarget) {
+        this.drag = {
+          mode: 'shape-resize',
+          pointerId: event.pointerId,
+          id: resizeTarget.shape.id,
+          handle: resizeTarget.handle,
+          original: resizeTarget.bounds,
+          draft: resizeShapeBounds(resizeTarget.bounds, resizeTarget.handle, world),
+        };
+        this.canvas.setPointerCapture(event.pointerId);
+        return;
+      }
+
       const hit = this.hitTest(world);
       this.options.onSelect(hit ? { type: hit.kind, id: hit.item.id } : null);
       if (!hit || hit.item.locked) return;
@@ -327,6 +376,8 @@ export class CanvasEngine {
       if (this.drag.mode === 'image' || this.drag.mode === 'shape-move') {
         this.drag.dx = this.drag.ox + world.x - this.drag.start.x;
         this.drag.dy = this.drag.oy + world.y - this.drag.start.y;
+      } else if (this.drag.mode === 'shape-resize') {
+        this.drag.draft = resizeShapeBounds(this.drag.original, this.drag.handle, world);
       } else if (this.drag.shape.type === 'pen') {
         this.drag.shape.points!.push(world);
       } else {
@@ -346,12 +397,14 @@ export class CanvasEngine {
       this.options.onCommitImagePosition(drag.id, Math.round(drag.dx), Math.round(drag.dy));
     } else if (drag.mode === 'shape-move') {
       this.options.onCommitShapePatch(drag.id, { x: Math.round(drag.dx), y: Math.round(drag.dy) });
+    } else if (drag.mode === 'shape-resize') {
+      this.options.onCommitShapePatch(drag.id, {
+        x: Math.round(drag.draft.x),
+        y: Math.round(drag.draft.y),
+        width: Math.round(drag.draft.width),
+        height: Math.round(drag.draft.height),
+      });
     } else if (drag.mode === 'shape-new') {
-      if (drag.shape.type === 'text' || drag.shape.type === 'speech-bubble') {
-        drag.shape.text = window.prompt('テキストを入力', '修正指示') ?? '';
-        if (Math.abs(drag.shape.width) < 60) drag.shape.width = 220;
-        if (Math.abs(drag.shape.height) < 30) drag.shape.height = 70;
-      }
       if (drag.shape.type === 'pen' && drag.shape.points?.length) {
         const xs = drag.shape.points.map((point) => point.x);
         const ys = drag.shape.points.map((point) => point.y);
@@ -359,6 +412,17 @@ export class CanvasEngine {
         drag.shape.y = Math.min(...ys);
         drag.shape.width = Math.max(...xs) - drag.shape.x;
         drag.shape.height = Math.max(...ys) - drag.shape.y;
+      } else {
+        const bounds = getShapeBounds(drag.shape);
+        drag.shape.x = bounds.left;
+        drag.shape.y = bounds.top;
+        drag.shape.width = Math.max(12, bounds.right - bounds.left);
+        drag.shape.height = Math.max(12, bounds.bottom - bounds.top);
+        if (drag.shape.type === 'text' || drag.shape.type === 'speech-bubble') {
+          drag.shape.text = window.prompt('テキストを入力', '修正指示') ?? '';
+          if (drag.shape.width < 60) drag.shape.width = 220;
+          if (drag.shape.height < 30) drag.shape.height = 70;
+        }
       }
       this.options.onCommitShape(drag.shape);
     }

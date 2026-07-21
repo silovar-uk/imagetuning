@@ -10,6 +10,7 @@ import './styles/workspace.css';
 import './styles/modals.css';
 import './styles/review-export.css';
 import './styles/planned-features.css';
+import './styles/resize-layer.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
