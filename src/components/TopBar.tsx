@@ -1,4 +1,4 @@
-import { Download, FileInput, FileJson, FolderOpen, Redo2, RotateCcw, Undo2 } from 'lucide-react';
+import { Download, FileInput, FileJson, FolderOpen, MessageCircle, Redo2, RotateCcw, Undo2 } from 'lucide-react';
 import { useRef } from 'react';
 
 type TopBarProps = {
@@ -6,11 +6,13 @@ type TopBarProps = {
   canUndo: boolean;
   canRedo: boolean;
   filename: string;
+  showCommentNumbers: boolean;
   onFilenameChange: (value: string) => void;
   onFiles: (files: File[]) => void;
   onImportJson: (file: File) => void;
   onExportJson: () => void;
   onExportPng: () => void;
+  onToggleCommentNumbers: () => void;
   onUndo: () => void;
   onRedo: () => void;
   onNewDocument: () => void;
@@ -45,8 +47,7 @@ export function TopBar(props: TopBarProps) {
 
       <div className="topbar-actions" aria-label="ファイルと履歴の操作">
         <button className="icon-button" type="button" onClick={() => imageInputRef.current?.click()} title="画像を開く">
-          <FolderOpen size={18} />
-          <span>画像</span>
+          <FolderOpen size={18} /><span>画像</span>
         </button>
         <input
           ref={imageInputRef}
@@ -61,8 +62,7 @@ export function TopBar(props: TopBarProps) {
         />
 
         <button className="icon-button" type="button" onClick={() => jsonInputRef.current?.click()} title="JSONを読み込む">
-          <FileInput size={18} />
-          <span>読込</span>
+          <FileInput size={18} /><span>読込</span>
         </button>
         <input
           ref={jsonInputRef}
@@ -77,27 +77,24 @@ export function TopBar(props: TopBarProps) {
         />
 
         <span className="toolbar-divider" />
-
-        <button className="icon-button" type="button" onClick={props.onUndo} disabled={!props.canUndo} title="元に戻す">
-          <Undo2 size={18} />
-        </button>
-        <button className="icon-button" type="button" onClick={props.onRedo} disabled={!props.canRedo} title="やり直す">
-          <Redo2 size={18} />
-        </button>
+        <button className="icon-button" type="button" onClick={props.onUndo} disabled={!props.canUndo} title="元に戻す"><Undo2 size={18} /></button>
+        <button className="icon-button" type="button" onClick={props.onRedo} disabled={!props.canRedo} title="やり直す"><Redo2 size={18} /></button>
+        <button
+          className={`icon-button ${props.showCommentNumbers ? 'is-active' : ''}`}
+          type="button"
+          onClick={props.onToggleCommentNumbers}
+          title="キャンバス上のコメント番号を切り替える"
+          aria-pressed={props.showCommentNumbers}
+        ><MessageCircle size={18} /><span>番号</span></button>
 
         <span className="toolbar-divider" />
-
         <button className="icon-button" type="button" onClick={props.onExportJson} title="JSONを書き出す">
-          <FileJson size={18} />
-          <span>JSON</span>
+          <FileJson size={18} /><span>JSON</span>
         </button>
         <button className="primary-button" type="button" onClick={props.onExportPng}>
-          <Download size={18} />
-          PNG書出し
+          <Download size={18} />PNG書出し
         </button>
-        <button className="icon-button danger-quiet" type="button" onClick={props.onNewDocument} title="新規作成">
-          <RotateCcw size={18} />
-        </button>
+        <button className="icon-button danger-quiet" type="button" onClick={props.onNewDocument} title="新規作成"><RotateCcw size={18} /></button>
       </div>
     </header>
   );
