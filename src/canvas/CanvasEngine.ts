@@ -1,31 +1,363 @@
+import { getOrderedComments, getOrderedLayers } from '../document/order';
 import type { AppState, ImageObject, Point, ShapeObject, ToolId } from '../document/types';
 import { createId } from '../utils/ids';
 import { drawShape } from './drawShape';
-export type ViewportSnapshot={zoom:number;offsetX:number;offsetY:number};
-type Drag={mode:'pan';pointerId:number;start:Point;ox:number;oy:number}|{mode:'image';pointerId:number;id:string;start:Point;ox:number;oy:number;dx:number;dy:number}|{mode:'shape-move';pointerId:number;id:string;start:Point;ox:number;oy:number;dx:number;dy:number}|{mode:'shape-new';pointerId:number;shape:ShapeObject};
-export type CanvasEngineOptions={onSelect:(selection:{type:'image'|'shape';id:string}|null)=>void;onCommitImagePosition:(id:string,x:number,y:number)=>void;onCommitShape:(shape:ShapeObject)=>void;onCommitShapePatch:(id:string,patch:Partial<ShapeObject>)=>void;onViewportChange:(v:ViewportSnapshot)=>void};
-export class CanvasEngine{
- private canvas:HTMLCanvasElement;private ctx:CanvasRenderingContext2D;private options:CanvasEngineOptions;private ro:ResizeObserver;private state:AppState|null=null;private tool:ToolId='select';private viewport:ViewportSnapshot={zoom:1,offsetX:0,offsetY:0};private drag:Drag|null=null;private cache=new Map<string,HTMLImageElement>();private loading=new Set<string>();private prevCount=0;private destroyed=false;
- constructor(canvas:HTMLCanvasElement,options:CanvasEngineOptions){this.canvas=canvas;this.options=options;const c=canvas.getContext('2d');if(!c)throw Error('Canvasを初期化できませんでした。');this.ctx=c;this.ro=new ResizeObserver(()=>this.render());this.ro.observe(canvas);canvas.addEventListener('pointerdown',this.down);canvas.addEventListener('pointermove',this.move);canvas.addEventListener('pointerup',this.up);canvas.addEventListener('pointercancel',this.cancel);canvas.addEventListener('wheel',this.wheel,{passive:false})}
- destroy(){this.destroyed=true;this.ro.disconnect();this.canvas.removeEventListener('pointerdown',this.down);this.canvas.removeEventListener('pointermove',this.move);this.canvas.removeEventListener('pointerup',this.up);this.canvas.removeEventListener('pointercancel',this.cancel);this.canvas.removeEventListener('wheel',this.wheel);this.cache.clear()}
- setState(s:AppState){this.state=s;this.tool=s.activeTool;if(this.prevCount===0&&s.document.images.length)queueMicrotask(()=>this.fitToDocument());this.prevCount=s.document.images.length;this.render()}
- fitToDocument(){if(!this.state)return;const r=this.canvas.getBoundingClientRect(),d=this.state.document.canvas,z=Math.min((r.width-64)/d.width,(r.height-64)/d.height,1);this.viewport={zoom:Math.max(.05,z),offsetX:(r.width-d.width*z)/2,offsetY:(r.height-d.height*z)/2};this.emit();this.render()}
- resetZoom(){if(!this.state)return;const r=this.canvas.getBoundingClientRect(),d=this.state.document.canvas;this.viewport={zoom:1,offsetX:(r.width-d.width)/2,offsetY:(r.height-d.height)/2};this.emit();this.render()}
- private emit(){this.options.onViewportChange({...this.viewport})}
- private size(){const r=this.canvas.getBoundingClientRect(),dpr=devicePixelRatio||1,w=Math.max(1,Math.round(r.width*dpr)),h=Math.max(1,Math.round(r.height*dpr));if(this.canvas.width!==w||this.canvas.height!==h){this.canvas.width=w;this.canvas.height=h}this.ctx.setTransform(dpr,0,0,dpr,0,0);return {w:r.width,h:r.height}}
- private img(o:ImageObject){const c=this.cache.get(o.id);if(c&&c.src===o.src&&c.complete)return c;if(this.loading.has(o.id))return null;this.loading.add(o.id);const i=new Image();i.onload=()=>{this.loading.delete(o.id);this.cache.set(o.id,i);if(!this.destroyed)this.render()};i.onerror=()=>this.loading.delete(o.id);i.src=o.src;return null}
- render(){if(!this.state||this.destroyed)return;const {w,h}=this.size(),ctx=this.ctx;ctx.clearRect(0,0,w,h);ctx.save();ctx.translate(this.viewport.offsetX,this.viewport.offsetY);ctx.scale(this.viewport.zoom,this.viewport.zoom);const d=this.state.document;if(d.canvas.background!=='transparent'){ctx.fillStyle=d.canvas.background==='black'?'#000':'#fff';ctx.fillRect(0,0,d.canvas.width,d.canvas.height)}ctx.strokeStyle='#c9cbc6';ctx.lineWidth=1/this.viewport.zoom;ctx.strokeRect(0,0,d.canvas.width,d.canvas.height);
- for(const o of [...d.images].filter(i=>i.visible).sort((a,b)=>a.zIndex-b.zIndex)){const im=this.img(o);if(!im)continue;const dr=this.drag?.mode==='image'&&this.drag.id===o.id?this.drag:null;ctx.save();ctx.globalAlpha=o.opacity;ctx.drawImage(im,dr?.dx??o.x,dr?.dy??o.y,o.width,o.height);ctx.restore()}
- for(const s of [...d.shapes].sort((a,b)=>a.zIndex-b.zIndex)){let shown=s;if(this.drag?.mode==='shape-move'&&this.drag.id===s.id)shown={...s,x:this.drag.dx,y:this.drag.dy};drawShape(ctx,shown,this.viewport.zoom)}if(this.drag?.mode==='shape-new')drawShape(ctx,this.drag.shape,this.viewport.zoom);
- const sel=this.state.selection;if(sel){const box=sel.type==='image'?d.images.find(i=>i.id===sel.id):d.shapes.find(s=>s.id===sel.id);if(box){const dr=this.drag;if(sel.type==='image'&&dr?.mode==='image'&&dr.id===sel.id)this.selection(dr.dx,dr.dy,(box as ImageObject).width,(box as ImageObject).height);else if(sel.type==='shape'&&dr?.mode==='shape-move'&&dr.id===sel.id)this.selection(dr.dx,dr.dy,(box as ShapeObject).width,(box as ShapeObject).height);else this.selection(box.x,box.y,box.width,box.height)}}
- d.comments.forEach((c,n)=>{const t=c.targetType==='image'?d.images.find(i=>i.id===c.targetId):d.shapes.find(s=>s.id===c.targetId);if(t)this.badge(n+1,t.x+18,t.y+18)});ctx.restore()}
- private selection(x:number,y:number,w:number,h:number){const c=this.ctx;c.save();c.strokeStyle='#c42026';c.lineWidth=2/this.viewport.zoom;c.setLineDash([8/this.viewport.zoom,5/this.viewport.zoom]);c.strokeRect(x,y,w,h);c.restore()}
- private badge(n:number,x:number,y:number){const c=this.ctx,r=16/this.viewport.zoom;c.save();c.fillStyle='#c42026';c.beginPath();c.arc(x,y,r,0,Math.PI*2);c.fill();c.fillStyle='#fff';c.font=`700 ${14/this.viewport.zoom}px system-ui`;c.textAlign='center';c.textBaseline='middle';c.fillText(String(n),x,y);c.restore()}
- private sp(e:PointerEvent|WheelEvent){const r=this.canvas.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top}}private world(p:Point){return{x:(p.x-this.viewport.offsetX)/this.viewport.zoom,y:(p.y-this.viewport.offsetY)/this.viewport.zoom}}
- private hit(p:Point){if(!this.state)return null;for(const s of [...this.state.document.shapes].reverse()){if(s.visible&&p.x>=Math.min(s.x,s.x+s.width)-8&&p.x<=Math.max(s.x,s.x+s.width)+8&&p.y>=Math.min(s.y,s.y+s.height)-8&&p.y<=Math.max(s.y,s.y+s.height)+8)return {type:'shape' as const,item:s}}for(const i of [...this.state.document.images].sort((a,b)=>b.zIndex-a.zIndex)){if(i.visible&&p.x>=i.x&&p.x<=i.x+i.width&&p.y>=i.y&&p.y<=i.y+i.height)return{type:'image' as const,item:i}}return null}
- private down=(e:PointerEvent)=>{if(!this.state)return;const s=this.sp(e);if(this.tool==='pan'||e.button===1){this.drag={mode:'pan',pointerId:e.pointerId,start:s,ox:this.viewport.offsetX,oy:this.viewport.offsetY};this.canvas.setPointerCapture(e.pointerId);return}const w=this.world(s);if(this.tool==='select'){const h=this.hit(w);this.options.onSelect(h?{type:h.type,id:h.item.id}:null);if(!h||h.item.locked)return;if(h.type==='image')this.drag={mode:'image',pointerId:e.pointerId,id:h.item.id,start:w,ox:h.item.x,oy:h.item.y,dx:h.item.x,dy:h.item.y};else this.drag={mode:'shape-move',pointerId:e.pointerId,id:h.item.id,start:w,ox:h.item.x,oy:h.item.y,dx:h.item.x,dy:h.item.y};this.canvas.setPointerCapture(e.pointerId);return}const o=this.state.toolOptions;const shape:ShapeObject={id:createId('shape'),type:this.tool,x:w.x,y:w.y,width:1,height:1,color:o.color,fillColor:this.tool==='color-tag'?o.color:o.fillColor,lineWidth:o.lineWidth,lineStyle:o.lineStyle,text:'',points:this.tool==='pen'?[w]:undefined,zIndex:Date.now(),visible:true,locked:false};this.drag={mode:'shape-new',pointerId:e.pointerId,shape};this.canvas.setPointerCapture(e.pointerId)}
- private move=(e:PointerEvent)=>{if(!this.drag||this.drag.pointerId!==e.pointerId)return;const s=this.sp(e);if(this.drag.mode==='pan'){this.viewport.offsetX=this.drag.ox+s.x-this.drag.start.x;this.viewport.offsetY=this.drag.oy+s.y-this.drag.start.y;this.emit()}else{const w=this.world(s);if(this.drag.mode==='image'||this.drag.mode==='shape-move'){this.drag.dx=this.drag.ox+w.x-this.drag.start.x;this.drag.dy=this.drag.oy+w.y-this.drag.start.y}else{const sh=this.drag.shape;if(sh.type==='pen')sh.points!.push(w);else{sh.width=w.x-sh.x;sh.height=w.y-sh.y}}}this.render()}
- private up=(e:PointerEvent)=>{if(!this.drag||this.drag.pointerId!==e.pointerId)return;const d=this.drag;this.drag=null;if(this.canvas.hasPointerCapture(e.pointerId))this.canvas.releasePointerCapture(e.pointerId);if(d.mode==='image')this.options.onCommitImagePosition(d.id,Math.round(d.dx),Math.round(d.dy));else if(d.mode==='shape-move')this.options.onCommitShapePatch(d.id,{x:Math.round(d.dx),y:Math.round(d.dy)});else if(d.mode==='shape-new'){if(d.shape.type==='text'||d.shape.type==='speech-bubble'){d.shape.text=window.prompt('テキストを入力','修正指示')??'';if(Math.abs(d.shape.width)<60)d.shape.width=220;if(Math.abs(d.shape.height)<30)d.shape.height=70}if(d.shape.type==='pen'&&d.shape.points?.length){const xs=d.shape.points.map(p=>p.x),ys=d.shape.points.map(p=>p.y);d.shape.x=Math.min(...xs);d.shape.y=Math.min(...ys);d.shape.width=Math.max(...xs)-d.shape.x;d.shape.height=Math.max(...ys)-d.shape.y}this.options.onCommitShape(d.shape)}this.render()}
- private cancel=(e:PointerEvent)=>{if(this.drag?.pointerId===e.pointerId){this.drag=null;this.render()}}
- private wheel=(e:WheelEvent)=>{e.preventDefault();const s=this.sp(e),before=this.world(s),z=Math.min(4,Math.max(.05,this.viewport.zoom*Math.exp(-e.deltaY*.0012)));this.viewport={zoom:z,offsetX:s.x-before.x*z,offsetY:s.y-before.y*z};this.emit();this.render()}
+
+export type ViewportSnapshot = { zoom: number; offsetX: number; offsetY: number };
+type Drag =
+  | { mode: 'pan'; pointerId: number; start: Point; ox: number; oy: number }
+  | { mode: 'image'; pointerId: number; id: string; start: Point; ox: number; oy: number; dx: number; dy: number }
+  | { mode: 'shape-move'; pointerId: number; id: string; start: Point; ox: number; oy: number; dx: number; dy: number }
+  | { mode: 'shape-new'; pointerId: number; shape: ShapeObject };
+
+export type CanvasEngineOptions = {
+  onSelect: (selection: { type: 'image' | 'shape'; id: string } | null) => void;
+  onCommitImagePosition: (id: string, x: number, y: number) => void;
+  onCommitShape: (shape: ShapeObject) => void;
+  onCommitShapePatch: (id: string, patch: Partial<ShapeObject>) => void;
+  onViewportChange: (viewport: ViewportSnapshot) => void;
+};
+
+export class CanvasEngine {
+  private canvas: HTMLCanvasElement;
+  private ctx: CanvasRenderingContext2D;
+  private options: CanvasEngineOptions;
+  private resizeObserver: ResizeObserver;
+  private state: AppState | null = null;
+  private tool: ToolId = 'select';
+  private viewport: ViewportSnapshot = { zoom: 1, offsetX: 0, offsetY: 0 };
+  private drag: Drag | null = null;
+  private cache = new Map<string, HTMLImageElement>();
+  private loading = new Set<string>();
+  private previousImageCount = 0;
+  private destroyed = false;
+
+  constructor(canvas: HTMLCanvasElement, options: CanvasEngineOptions) {
+    this.canvas = canvas;
+    this.options = options;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Canvasを初期化できませんでした。');
+    this.ctx = ctx;
+    this.resizeObserver = new ResizeObserver(() => this.render());
+    this.resizeObserver.observe(canvas);
+    canvas.addEventListener('pointerdown', this.handlePointerDown);
+    canvas.addEventListener('pointermove', this.handlePointerMove);
+    canvas.addEventListener('pointerup', this.handlePointerUp);
+    canvas.addEventListener('pointercancel', this.handlePointerCancel);
+    canvas.addEventListener('wheel', this.handleWheel, { passive: false });
+  }
+
+  destroy() {
+    this.destroyed = true;
+    this.resizeObserver.disconnect();
+    this.canvas.removeEventListener('pointerdown', this.handlePointerDown);
+    this.canvas.removeEventListener('pointermove', this.handlePointerMove);
+    this.canvas.removeEventListener('pointerup', this.handlePointerUp);
+    this.canvas.removeEventListener('pointercancel', this.handlePointerCancel);
+    this.canvas.removeEventListener('wheel', this.handleWheel);
+    this.cache.clear();
+  }
+
+  setState(state: AppState) {
+    this.state = state;
+    this.tool = state.activeTool;
+    if (this.previousImageCount === 0 && state.document.images.length > 0) queueMicrotask(() => this.fitToDocument());
+    this.previousImageCount = state.document.images.length;
+    this.render();
+  }
+
+  fitToDocument() {
+    if (!this.state) return;
+    const rect = this.canvas.getBoundingClientRect();
+    const documentData = this.state.document;
+    const zoom = Math.min((rect.width - 64) / documentData.canvas.width, (rect.height - 64) / documentData.canvas.height, 1);
+    this.viewport = {
+      zoom: Math.max(0.05, zoom),
+      offsetX: (rect.width - documentData.canvas.width * zoom) / 2,
+      offsetY: (rect.height - documentData.canvas.height * zoom) / 2,
+    };
+    this.emitViewport();
+    this.render();
+  }
+
+  resetZoom() {
+    if (!this.state) return;
+    const rect = this.canvas.getBoundingClientRect();
+    const documentData = this.state.document;
+    this.viewport = {
+      zoom: 1,
+      offsetX: (rect.width - documentData.canvas.width) / 2,
+      offsetY: (rect.height - documentData.canvas.height) / 2,
+    };
+    this.emitViewport();
+    this.render();
+  }
+
+  private emitViewport() {
+    this.options.onViewportChange({ ...this.viewport });
+  }
+
+  private resizeCanvas() {
+    const rect = this.canvas.getBoundingClientRect();
+    const dpr = devicePixelRatio || 1;
+    const width = Math.max(1, Math.round(rect.width * dpr));
+    const height = Math.max(1, Math.round(rect.height * dpr));
+    if (this.canvas.width !== width || this.canvas.height !== height) {
+      this.canvas.width = width;
+      this.canvas.height = height;
+    }
+    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return { width: rect.width, height: rect.height };
+  }
+
+  private getImage(object: ImageObject) {
+    const cached = this.cache.get(object.id);
+    if (cached && cached.src === object.src && cached.complete) return cached;
+    if (this.loading.has(object.id)) return null;
+    this.loading.add(object.id);
+    const image = new Image();
+    image.onload = () => {
+      this.loading.delete(object.id);
+      this.cache.set(object.id, image);
+      if (!this.destroyed) this.render();
+    };
+    image.onerror = () => this.loading.delete(object.id);
+    image.src = object.src;
+    return null;
+  }
+
+  render() {
+    if (!this.state || this.destroyed) return;
+    const size = this.resizeCanvas();
+    const ctx = this.ctx;
+    ctx.clearRect(0, 0, size.width, size.height);
+    ctx.save();
+    ctx.translate(this.viewport.offsetX, this.viewport.offsetY);
+    ctx.scale(this.viewport.zoom, this.viewport.zoom);
+
+    const documentData = this.state.document;
+    if (documentData.canvas.background !== 'transparent') {
+      ctx.fillStyle = documentData.canvas.background === 'black' ? '#000000' : '#ffffff';
+      ctx.fillRect(0, 0, documentData.canvas.width, documentData.canvas.height);
+    }
+    ctx.strokeStyle = '#c9cbc6';
+    ctx.lineWidth = 1 / this.viewport.zoom;
+    ctx.strokeRect(0, 0, documentData.canvas.width, documentData.canvas.height);
+
+    for (const entry of getOrderedLayers(documentData)) {
+      if (!entry.item.visible) continue;
+      if (entry.kind === 'image') {
+        const image = this.getImage(entry.item);
+        if (!image) continue;
+        const draft = this.drag?.mode === 'image' && this.drag.id === entry.item.id ? this.drag : null;
+        ctx.save();
+        ctx.globalAlpha = entry.item.opacity;
+        ctx.drawImage(image, draft?.dx ?? entry.item.x, draft?.dy ?? entry.item.y, entry.item.width, entry.item.height);
+        ctx.restore();
+      } else {
+        const shown = this.drag?.mode === 'shape-move' && this.drag.id === entry.item.id
+          ? { ...entry.item, x: this.drag.dx, y: this.drag.dy }
+          : entry.item;
+        drawShape(ctx, shown, this.viewport.zoom);
+      }
+    }
+
+    if (this.drag?.mode === 'shape-new') drawShape(ctx, this.drag.shape, this.viewport.zoom);
+
+    const selection = this.state.selection;
+    if (selection) {
+      const box = selection.type === 'image'
+        ? documentData.images.find((item) => item.id === selection.id)
+        : documentData.shapes.find((item) => item.id === selection.id);
+      if (box) {
+        const drag = this.drag;
+        if (selection.type === 'image' && drag?.mode === 'image' && drag.id === selection.id) {
+          this.drawSelection(drag.dx, drag.dy, (box as ImageObject).width, (box as ImageObject).height);
+        } else if (selection.type === 'shape' && drag?.mode === 'shape-move' && drag.id === selection.id) {
+          this.drawSelection(drag.dx, drag.dy, (box as ShapeObject).width, (box as ShapeObject).height);
+        } else {
+          this.drawSelection(box.x, box.y, box.width, box.height);
+        }
+      }
+    }
+
+    if (this.state.settings.showCommentNumbers) {
+      getOrderedComments(documentData).forEach((comment, index) => {
+        const target = comment.targetType === 'image'
+          ? documentData.images.find((item) => item.id === comment.targetId && item.visible)
+          : documentData.shapes.find((item) => item.id === comment.targetId && item.visible);
+        if (target) this.drawBadge(index + 1, target.x + 18, target.y + 18);
+      });
+    }
+
+    ctx.restore();
+  }
+
+  private drawSelection(x: number, y: number, width: number, height: number) {
+    this.ctx.save();
+    this.ctx.strokeStyle = '#c42026';
+    this.ctx.lineWidth = 2 / this.viewport.zoom;
+    this.ctx.setLineDash([8 / this.viewport.zoom, 5 / this.viewport.zoom]);
+    this.ctx.strokeRect(x, y, width, height);
+    this.ctx.restore();
+  }
+
+  private drawBadge(number: number, x: number, y: number) {
+    const radius = 16 / this.viewport.zoom;
+    this.ctx.save();
+    this.ctx.fillStyle = '#c42026';
+    this.ctx.beginPath();
+    this.ctx.arc(x, y, radius, 0, Math.PI * 2);
+    this.ctx.fill();
+    this.ctx.fillStyle = '#ffffff';
+    this.ctx.font = `700 ${14 / this.viewport.zoom}px system-ui`;
+    this.ctx.textAlign = 'center';
+    this.ctx.textBaseline = 'middle';
+    this.ctx.fillText(String(number), x, y);
+    this.ctx.restore();
+  }
+
+  private screenPoint(event: PointerEvent | WheelEvent) {
+    const rect = this.canvas.getBoundingClientRect();
+    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+  }
+
+  private worldPoint(point: Point) {
+    return {
+      x: (point.x - this.viewport.offsetX) / this.viewport.zoom,
+      y: (point.y - this.viewport.offsetY) / this.viewport.zoom,
+    };
+  }
+
+  private hitTest(point: Point) {
+    if (!this.state) return null;
+    const layers = getOrderedLayers(this.state.document).reverse();
+    for (const entry of layers) {
+      if (!entry.item.visible) continue;
+      const padding = entry.kind === 'shape' ? 8 : 0;
+      const left = Math.min(entry.item.x, entry.item.x + entry.item.width) - padding;
+      const right = Math.max(entry.item.x, entry.item.x + entry.item.width) + padding;
+      const top = Math.min(entry.item.y, entry.item.y + entry.item.height) - padding;
+      const bottom = Math.max(entry.item.y, entry.item.y + entry.item.height) + padding;
+      if (point.x >= left && point.x <= right && point.y >= top && point.y <= bottom) return entry;
+    }
+    return null;
+  }
+
+  private handlePointerDown = (event: PointerEvent) => {
+    if (!this.state) return;
+    const screen = this.screenPoint(event);
+    if (this.tool === 'pan' || event.button === 1) {
+      this.drag = { mode: 'pan', pointerId: event.pointerId, start: screen, ox: this.viewport.offsetX, oy: this.viewport.offsetY };
+      this.canvas.setPointerCapture(event.pointerId);
+      return;
+    }
+
+    const world = this.worldPoint(screen);
+    if (this.tool === 'select') {
+      const hit = this.hitTest(world);
+      this.options.onSelect(hit ? { type: hit.kind, id: hit.item.id } : null);
+      if (!hit || hit.item.locked) return;
+      if (hit.kind === 'image') {
+        this.drag = { mode: 'image', pointerId: event.pointerId, id: hit.item.id, start: world, ox: hit.item.x, oy: hit.item.y, dx: hit.item.x, dy: hit.item.y };
+      } else {
+        this.drag = { mode: 'shape-move', pointerId: event.pointerId, id: hit.item.id, start: world, ox: hit.item.x, oy: hit.item.y, dx: hit.item.x, dy: hit.item.y };
+      }
+      this.canvas.setPointerCapture(event.pointerId);
+      return;
+    }
+
+    const options = this.state.toolOptions;
+    const shape: ShapeObject = {
+      id: createId('shape'),
+      type: this.tool,
+      x: world.x,
+      y: world.y,
+      width: 1,
+      height: 1,
+      color: options.color,
+      fillColor: this.tool === 'color-tag' ? options.color : options.fillColor,
+      lineWidth: options.lineWidth,
+      lineStyle: options.lineStyle,
+      text: '',
+      points: this.tool === 'pen' ? [world] : undefined,
+      zIndex: Date.now(),
+      visible: true,
+      locked: false,
+    };
+    this.drag = { mode: 'shape-new', pointerId: event.pointerId, shape };
+    this.canvas.setPointerCapture(event.pointerId);
+  };
+
+  private handlePointerMove = (event: PointerEvent) => {
+    if (!this.drag || this.drag.pointerId !== event.pointerId) return;
+    const screen = this.screenPoint(event);
+    if (this.drag.mode === 'pan') {
+      this.viewport.offsetX = this.drag.ox + screen.x - this.drag.start.x;
+      this.viewport.offsetY = this.drag.oy + screen.y - this.drag.start.y;
+      this.emitViewport();
+    } else {
+      const world = this.worldPoint(screen);
+      if (this.drag.mode === 'image' || this.drag.mode === 'shape-move') {
+        this.drag.dx = this.drag.ox + world.x - this.drag.start.x;
+        this.drag.dy = this.drag.oy + world.y - this.drag.start.y;
+      } else if (this.drag.shape.type === 'pen') {
+        this.drag.shape.points!.push(world);
+      } else {
+        this.drag.shape.width = world.x - this.drag.shape.x;
+        this.drag.shape.height = world.y - this.drag.shape.y;
+      }
+    }
+    this.render();
+  };
+
+  private handlePointerUp = (event: PointerEvent) => {
+    if (!this.drag || this.drag.pointerId !== event.pointerId) return;
+    const drag = this.drag;
+    this.drag = null;
+    if (this.canvas.hasPointerCapture(event.pointerId)) this.canvas.releasePointerCapture(event.pointerId);
+
+    if (drag.mode === 'image') {
+      this.options.onCommitImagePosition(drag.id, Math.round(drag.dx), Math.round(drag.dy));
+    } else if (drag.mode === 'shape-move') {
+      this.options.onCommitShapePatch(drag.id, { x: Math.round(drag.dx), y: Math.round(drag.dy) });
+    } else if (drag.mode === 'shape-new') {
+      if (drag.shape.type === 'text' || drag.shape.type === 'speech-bubble') {
+        drag.shape.text = window.prompt('テキストを入力', '修正指示') ?? '';
+        if (Math.abs(drag.shape.width) < 60) drag.shape.width = 220;
+        if (Math.abs(drag.shape.height) < 30) drag.shape.height = 70;
+      }
+      if (drag.shape.type === 'pen' && drag.shape.points?.length) {
+        const xs = drag.shape.points.map((point) => point.x);
+        const ys = drag.shape.points.map((point) => point.y);
+        drag.shape.x = Math.min(...xs);
+        drag.shape.y = Math.min(...ys);
+        drag.shape.width = Math.max(...xs) - drag.shape.x;
+        drag.shape.height = Math.max(...ys) - drag.shape.y;
+      }
+      this.options.onCommitShape(drag.shape);
+    }
+    this.render();
+  };
+
+  private handlePointerCancel = (event: PointerEvent) => {
+    if (this.drag?.pointerId === event.pointerId) {
+      this.drag = null;
+      this.render();
+    }
+  };
+
+  private handleWheel = (event: WheelEvent) => {
+    event.preventDefault();
+    const screen = this.screenPoint(event);
+    const before = this.worldPoint(screen);
+    const zoom = Math.min(4, Math.max(0.05, this.viewport.zoom * Math.exp(-event.deltaY * 0.0012)));
+    this.viewport = {
+      zoom,
+      offsetX: screen.x - before.x * zoom,
+      offsetY: screen.y - before.y * zoom,
+    };
+    this.emitViewport();
+    this.render();
+  };
 }
