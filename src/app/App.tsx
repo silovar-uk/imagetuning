@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { CanvasWorkspace } from '../components/CanvasWorkspace';
+import { ExportModal } from '../components/ExportModal';
 import { ReviewPanel } from '../components/ReviewPanel';
 import { StatusBar } from '../components/StatusBar';
 import { ToolPanel } from '../components/ToolPanel';
@@ -10,7 +11,6 @@ import type { ViewportSnapshot } from '../canvas/CanvasEngine';
 import { migrateDocument } from '../document/migrate';
 import { serializeDocument } from '../document/serialize';
 import { downloadBlob, safeFilename } from '../file/download';
-import { documentToPngBlob } from '../file/exporter';
 import { filesToImageObjects } from '../file/imageLoader';
 import { useApp } from './AppContext';
 
@@ -20,6 +20,7 @@ export function App() {
   const [viewport, setViewport] = useState<ViewportSnapshot>({ zoom: 1, offsetX: 0, offsetY: 0 });
   const [notice, setNotice] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
 
   const showNotice = useCallback((message: string) => {
     setNotice(message);
@@ -63,22 +64,13 @@ export function App() {
     showNotice('JSONを書き出しました。');
   }, [dispatch, filename, showNotice, state.document]);
 
-  const handleExportPng = useCallback(async () => {
+  const handleExportPng = useCallback(() => {
     if (state.document.images.length === 0) {
       showNotice('先に画像を追加してください。');
       return;
     }
-    setIsBusy(true);
-    try {
-      const blob = await documentToPngBlob(state.document, true);
-      downloadBlob(blob, `${safeFilename(filename, 'image-feedback')}.png`);
-      showNotice('PNGを書き出しました。');
-    } catch (error) {
-      showNotice(error instanceof Error ? error.message : 'PNGを書き出せませんでした。');
-    } finally {
-      setIsBusy(false);
-    }
-  }, [filename, showNotice, state.document]);
+    setExportOpen(true);
+  }, [showNotice, state.document.images.length]);
 
   const handleNewDocument = useCallback(() => {
     if (state.isDirty && !window.confirm('保存していない変更があります。新規作成しますか？')) return;
@@ -102,14 +94,26 @@ export function App() {
       const target = event.target as HTMLElement | null;
       const typing = target?.matches('input, textarea, select, [contenteditable="true"]');
       if (typing) return;
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); dispatch({ type: event.shiftKey ? 'REDO' : 'UNDO' }); return; }
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') { event.preventDefault(); dispatch({ type: 'REDO' }); return; }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
+        event.preventDefault();
+        dispatch({ type: event.shiftKey ? 'REDO' : 'UNDO' });
+        return;
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') {
+        event.preventDefault();
+        dispatch({ type: 'REDO' });
+        return;
+      }
       if (event.key.toLowerCase() === 'v') dispatch({ type: 'SET_TOOL', tool: 'select' });
       if (event.key.toLowerCase() === 'h') dispatch({ type: 'SET_TOOL', tool: 'pan' });
       if (event.key.toLowerCase() === 'p') dispatch({ type: 'SET_TOOL', tool: 'pen' });
       if (event.key.toLowerCase() === 'r') dispatch({ type: 'SET_TOOL', tool: 'rect' });
       if (event.key.toLowerCase() === 'a') dispatch({ type: 'SET_TOOL', tool: 'arrow' });
       if (event.key.toLowerCase() === 't') dispatch({ type: 'SET_TOOL', tool: 'text' });
+      if (event.key === 'Delete' || event.key === 'Backspace') {
+        if (state.selection?.type === 'image') dispatch({ type: 'REMOVE_IMAGE', imageId: state.selection.id });
+        if (state.selection?.type === 'shape') dispatch({ type: 'REMOVE_SHAPE', shapeId: state.selection.id });
+      }
     };
 
     const handlePaste = (event: ClipboardEvent) => {
@@ -125,19 +129,47 @@ export function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('paste', handlePaste);
-    return () => { window.removeEventListener('keydown', handleKeyDown); window.removeEventListener('paste', handlePaste); };
-  }, [dispatch, handleFiles]);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('paste', handlePaste);
+    };
+  }, [dispatch, handleFiles, state.selection]);
 
   return (
     <div className="app-shell">
-      <TopBar isDirty={state.isDirty} canUndo={canUndo} canRedo={canRedo} filename={filename} onFilenameChange={setFilename} onFiles={handleFiles} onImportJson={handleImportJson} onExportJson={handleExportJson} onExportPng={handleExportPng} onUndo={() => dispatch({ type: 'UNDO' })} onRedo={() => dispatch({ type: 'REDO' })} onNewDocument={handleNewDocument} />
+      <TopBar
+        isDirty={state.isDirty}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        filename={filename}
+        showCommentNumbers={state.settings.showCommentNumbers}
+        onFilenameChange={setFilename}
+        onFiles={handleFiles}
+        onImportJson={handleImportJson}
+        onExportJson={handleExportJson}
+        onExportPng={handleExportPng}
+        onToggleCommentNumbers={() => dispatch({
+          type: 'PATCH_SETTINGS',
+          patch: { showCommentNumbers: !state.settings.showCommentNumbers },
+        })}
+        onUndo={() => dispatch({ type: 'UNDO' })}
+        onRedo={() => dispatch({ type: 'REDO' })}
+        onNewDocument={handleNewDocument}
+      />
       <ToolPanel />
       <CanvasWorkspace onFiles={handleFiles} onViewportChange={setViewport} />
       <ReviewPanel />
-      <StatusBar tool={state.activeTool} zoom={viewport.zoom} imageCount={state.document.images.length} commentCount={state.document.comments.length} canvasSize={state.document.canvas} />
+      <StatusBar
+        tool={state.activeTool}
+        zoom={viewport.zoom}
+        imageCount={state.document.images.length}
+        commentCount={state.document.comments.length}
+        canvasSize={state.document.canvas}
+      />
       {isBusy && <div className="busy-overlay" role="status"><span className="spinner" />処理中…</div>}
       {state.modal === 'adjust' && <ImageAdjustModal />}
       {state.modal === 'retouch' && <RetouchModal />}
+      <ExportModal open={exportOpen} filename={filename} onClose={() => setExportOpen(false)} onNotice={showNotice} />
       {notice && <div className="toast" role="status">{notice}</div>}
     </div>
   );

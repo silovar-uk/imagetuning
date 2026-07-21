@@ -1,4 +1,87 @@
-import type { AppDocument } from '../document/types';import { drawShape } from '../canvas/drawShape';
-function loadImage(src:string){return new Promise<HTMLImageElement>((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=()=>rej(Error('書き出し用画像を読み込めませんでした。'));i.src=src})}
-export async function renderDocumentToCanvas(d:AppDocument,includeNumbers:boolean){const c=document.createElement('canvas');c.width=d.canvas.width;c.height=d.canvas.height;const x=c.getContext('2d')!;if(d.canvas.background!=='transparent'){x.fillStyle=d.canvas.background==='black'?'#000':'#fff';x.fillRect(0,0,c.width,c.height)}for(const o of [...d.images].filter(i=>i.visible).sort((a,b)=>a.zIndex-b.zIndex)){const i=await loadImage(o.src);x.save();x.globalAlpha=o.opacity;x.drawImage(i,o.x,o.y,o.width,o.height);x.restore()}for(const s of [...d.shapes].sort((a,b)=>a.zIndex-b.zIndex))drawShape(x,s,1);if(includeNumbers)d.comments.forEach((m,n)=>{const t=m.targetType==='image'?d.images.find(i=>i.id===m.targetId):d.shapes.find(s=>s.id===m.targetId);if(!t)return;x.save();x.fillStyle='#c42026';x.beginPath();x.arc(t.x+18,t.y+18,16,0,Math.PI*2);x.fill();x.fillStyle='#fff';x.font='700 14px system-ui';x.textAlign='center';x.textBaseline='middle';x.fillText(String(n+1),t.x+18,t.y+18);x.restore()});return c}
-export async function documentToPngBlob(d:AppDocument,n:boolean){const c=await renderDocumentToCanvas(d,n);return new Promise<Blob>((res,rej)=>c.toBlob(b=>b?res(b):rej(Error('PNGを書き出せませんでした。')),'image/png'))}
+import { drawShape } from '../canvas/drawShape';
+import { getOrderedComments, getOrderedLayers } from '../document/order';
+import type { AppDocument, CanvasSettings } from '../document/types';
+
+export type ExportOptions = {
+  includeNumbers: boolean;
+  background: CanvasSettings['background'];
+};
+
+function loadImage(src: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('書き出し用画像を読み込めませんでした。'));
+    image.src = src;
+  });
+}
+
+export async function renderDocumentToCanvas(
+  documentData: AppDocument,
+  options: boolean | Partial<ExportOptions> = true,
+) {
+  const normalized: ExportOptions = typeof options === 'boolean'
+    ? { includeNumbers: options, background: documentData.canvas.background }
+    : {
+        includeNumbers: options.includeNumbers ?? true,
+        background: options.background ?? documentData.canvas.background,
+      };
+
+  const canvas = document.createElement('canvas');
+  canvas.width = documentData.canvas.width;
+  canvas.height = documentData.canvas.height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Canvasを初期化できませんでした。');
+
+  if (normalized.background !== 'transparent') {
+    ctx.fillStyle = normalized.background === 'black' ? '#000000' : '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
+
+  for (const entry of getOrderedLayers(documentData)) {
+    if (!entry.item.visible) continue;
+    if (entry.kind === 'image') {
+      const image = await loadImage(entry.item.src);
+      ctx.save();
+      ctx.globalAlpha = entry.item.opacity;
+      ctx.drawImage(image, entry.item.x, entry.item.y, entry.item.width, entry.item.height);
+      ctx.restore();
+    } else {
+      drawShape(ctx, entry.item, 1);
+    }
+  }
+
+  if (normalized.includeNumbers) {
+    getOrderedComments(documentData).forEach((comment, index) => {
+      const target = comment.targetType === 'image'
+        ? documentData.images.find((item) => item.id === comment.targetId && item.visible)
+        : documentData.shapes.find((item) => item.id === comment.targetId && item.visible);
+      if (!target) return;
+      const x = target.x + 18;
+      const y = target.y + 18;
+      ctx.save();
+      ctx.fillStyle = '#c42026';
+      ctx.beginPath();
+      ctx.arc(x, y, 16, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '700 14px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(index + 1), x, y);
+      ctx.restore();
+    });
+  }
+
+  return canvas;
+}
+
+export async function documentToPngBlob(
+  documentData: AppDocument,
+  options: boolean | Partial<ExportOptions> = true,
+) {
+  const canvas = await renderDocumentToCanvas(documentData, options);
+  return new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error('PNGを書き出せませんでした。')), 'image/png');
+  });
+}
