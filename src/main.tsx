@@ -9,6 +9,7 @@ import './styles/controls.css';
 import './styles/workspace.css';
 import './styles/modals.css';
 import './styles/review-export.css';
+import './styles/planned-features.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
