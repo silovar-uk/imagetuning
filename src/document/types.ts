@@ -1,4 +1,4 @@
-export type ToolId = 'select' | 'pan' | 'pen' | 'rect' | 'ellipse' | 'arrow' | 'text' | 'speech-bubble' | 'color-tag';
+export type ToolId = 'select' | 'pan' | 'eyedropper' | 'pen' | 'rect' | 'ellipse' | 'arrow' | 'text' | 'speech-bubble' | 'color-tag';
 export type ModalId = 'adjust' | 'retouch' | null;
 export type CommentNumberingMode = 'created' | 'position';
 
