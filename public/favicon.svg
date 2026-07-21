@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Image Tuning">
+  <rect x="5" y="5" width="54" height="54" rx="13" fill="#C42026"/>
+  <rect x="14" y="14" width="36" height="28" rx="6" fill="none" stroke="#FFFFFF" stroke-width="4"/>
+  <circle cx="24" cy="23" r="3" fill="#FFFFFF"/>
+  <path d="M18 36l8-8 6 6 5-5 9 9" fill="none" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M16 49h32M16 55h32" fill="none" stroke="#FFFFFF" stroke-width="3.5" stroke-linecap="round"/>
+  <circle cx="28" cy="49" r="4" fill="#C42026" stroke="#FFFFFF" stroke-width="3"/>
+  <circle cx="39" cy="55" r="4" fill="#C42026" stroke="#FFFFFF" stroke-width="3"/>
+</svg>

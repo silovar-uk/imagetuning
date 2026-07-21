@@ -1,0 +1,38 @@
+{
+  "project": "Image Tuning",
+  "iconConcept": {
+    "name": "Frame Tuner",
+    "coreMessage": "画像を見ながら、修正点を調整する",
+    "visualMetaphor": [
+      "角丸の画像フレーム",
+      "右下へ重なる2本の調整スライダー",
+      "画像内の小さなフォーカスポイント"
+    ],
+    "avoid": [
+      "AIを連想させる星・魔法・グラデーション",
+      "細かすぎる線",
+      "ITの文字ロゴ",
+      "写真そのものの描写"
+    ]
+  },
+  "geometry": {
+    "viewBox": "0 0 64 64",
+    "outerMargin": 5,
+    "strokeWidth": 4,
+    "cornerRadius": 13,
+    "minimumReadableSize": "16px",
+    "opticalBalance": "画像フレームを上、調整操作を下へ配置し、中央に重心を置く"
+  },
+  "color": {
+    "primary": "#C42026",
+    "foregroundOnRed": "#FFFFFF",
+    "background": "transparent",
+    "monochromeCompatible": true
+  },
+  "favicon": {
+    "format": "SVG",
+    "path": "public/favicon.svg",
+    "htmlReference": "%BASE_URL%favicon.svg",
+    "sizes": ["16x16", "32x32", "64x64"]
+  }
+}
