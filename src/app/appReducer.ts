@@ -1,5 +1,6 @@
 import { getOrderedLayers, moveLayer } from '../document/order';
 import { createInitialState, type AppState, type ImageObject } from '../document/types';
+import { trimHistoryStates } from '../history/memory';
 import type { EditorAction, HistoryAction } from './actions';
 import { undoableActionTypes } from './actions';
 
@@ -142,18 +143,26 @@ export function historyReducer(state: HistoryState, action: HistoryAction): Hist
   if (action.type === 'UNDO') {
     const previous = state.past.at(-1);
     return previous
-      ? { past: state.past.slice(0, -1), present: { ...previous, isDirty: true }, future: [state.present, ...state.future] }
+      ? {
+          past: state.past.slice(0, -1),
+          present: { ...previous, isDirty: true },
+          future: [state.present, ...state.future].slice(0, 50),
+        }
       : state;
   }
   if (action.type === 'REDO') {
     const next = state.future[0];
     return next
-      ? { past: [...state.past, state.present], present: { ...next, isDirty: true }, future: state.future.slice(1) }
+      ? {
+          past: trimHistoryStates([...state.past, state.present]),
+          present: { ...next, isDirty: true },
+          future: state.future.slice(1),
+        }
       : state;
   }
 
   const nextPresent = editorReducer(state.present, action);
   if (nextPresent === state.present) return state;
   if (!undoableActionTypes.has(action.type) || action.type === 'MARK_SAVED') return { ...state, present: nextPresent };
-  return { past: [...state.past.slice(-49), state.present], present: nextPresent, future: [] };
+  return { past: trimHistoryStates([...state.past, state.present]), present: nextPresent, future: [] };
 }
