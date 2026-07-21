@@ -148,8 +148,7 @@ export function ReviewPanel() {
               }}
             />
             <button className="secondary-button" type="button" disabled={!selection || !draft.trim()} onClick={addComment}>
-              <MessageSquarePlus size={17} />
-              コメントを追加
+              <MessageSquarePlus size={17} />コメントを追加
             </button>
           </section>
 
@@ -208,12 +207,8 @@ export function ReviewPanel() {
             <div className="panel-empty compact"><p>画像や図形を追加すると表示されます</p></div>
           ) : layers.map((entry) => {
             const selected = selection?.type === entry.kind && selection.id === entry.item.id;
-            const title = entry.kind === 'image'
-              ? entry.item.name
-              : entry.item.text?.trim() || entry.item.type;
-            const detail = entry.kind === 'image'
-              ? `${Math.round(entry.item.width)} × ${Math.round(entry.item.height)}`
-              : '図形';
+            const title = entry.kind === 'image' ? entry.item.name : entry.item.text?.trim() || entry.item.type;
+            const detail = entry.kind === 'image' ? `${Math.round(entry.item.width)} × ${Math.round(entry.item.height)}` : '図形';
             return (
               <article
                 key={`${entry.kind}:${entry.item.id}`}
@@ -222,6 +217,24 @@ export function ReviewPanel() {
               >
                 <span className="layer-icon"><Layers3 size={17} /></span>
                 <div className="layer-name"><strong title={title}>{title}</strong><small>{detail}</small></div>
+                <div className="layer-extreme-actions" aria-label="レイヤーを端へ移動">
+                  <button
+                    type="button"
+                    title="最前面へ"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      dispatch({ type: 'MOVE_LAYER', kind: entry.kind, id: entry.item.id, direction: 'front' });
+                    }}
+                  >最前</button>
+                  <button
+                    type="button"
+                    title="最背面へ"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      dispatch({ type: 'MOVE_LAYER', kind: entry.kind, id: entry.item.id, direction: 'back' });
+                    }}
+                  >最背</button>
+                </div>
                 <div className="layer-order-actions">
                   <button
                     type="button"
