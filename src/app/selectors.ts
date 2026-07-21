@@ -1,6 +1,3 @@
-import type { AppState, ImageObject } from '../document/types';
-
-export function selectSelectedImage(state: AppState): ImageObject | null {
-  if (state.selection?.type !== 'image') return null;
-  return state.document.images.find((image) => image.id === state.selection?.id) ?? null;
-}
+import type { AppState } from '../document/types';
+export const selectSelectedImage=(s:AppState)=>s.selection?.type==='image'?s.document.images.find(i=>i.id===s.selection!.id)??null:null;
+export const selectSelectedShape=(s:AppState)=>s.selection?.type==='shape'?s.document.shapes.find(i=>i.id===s.selection!.id)??null:null;
