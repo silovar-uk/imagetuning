@@ -4,6 +4,8 @@ import { ReviewPanel } from '../components/ReviewPanel';
 import { StatusBar } from '../components/StatusBar';
 import { ToolPanel } from '../components/ToolPanel';
 import { TopBar } from '../components/TopBar';
+import { ImageAdjustModal } from '../components/modals/ImageAdjustModal';
+import { RetouchModal } from '../components/modals/RetouchModal';
 import type { ViewportSnapshot } from '../canvas/CanvasEngine';
 import { migrateDocument } from '../document/migrate';
 import { serializeDocument } from '../document/serialize';
@@ -100,19 +102,14 @@ export function App() {
       const target = event.target as HTMLElement | null;
       const typing = target?.matches('input, textarea, select, [contenteditable="true"]');
       if (typing) return;
-
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
-        event.preventDefault();
-        dispatch({ type: event.shiftKey ? 'REDO' : 'UNDO' });
-        return;
-      }
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') {
-        event.preventDefault();
-        dispatch({ type: 'REDO' });
-        return;
-      }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); dispatch({ type: event.shiftKey ? 'REDO' : 'UNDO' }); return; }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') { event.preventDefault(); dispatch({ type: 'REDO' }); return; }
       if (event.key.toLowerCase() === 'v') dispatch({ type: 'SET_TOOL', tool: 'select' });
       if (event.key.toLowerCase() === 'h') dispatch({ type: 'SET_TOOL', tool: 'pan' });
+      if (event.key.toLowerCase() === 'p') dispatch({ type: 'SET_TOOL', tool: 'pen' });
+      if (event.key.toLowerCase() === 'r') dispatch({ type: 'SET_TOOL', tool: 'rect' });
+      if (event.key.toLowerCase() === 'a') dispatch({ type: 'SET_TOOL', tool: 'arrow' });
+      if (event.key.toLowerCase() === 't') dispatch({ type: 'SET_TOOL', tool: 'text' });
     };
 
     const handlePaste = (event: ClipboardEvent) => {
@@ -128,41 +125,19 @@ export function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('paste', handlePaste);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('paste', handlePaste);
-    };
+    return () => { window.removeEventListener('keydown', handleKeyDown); window.removeEventListener('paste', handlePaste); };
   }, [dispatch, handleFiles]);
 
   return (
     <div className="app-shell">
-      <TopBar
-        isDirty={state.isDirty}
-        canUndo={canUndo}
-        canRedo={canRedo}
-        filename={filename}
-        onFilenameChange={setFilename}
-        onFiles={handleFiles}
-        onImportJson={handleImportJson}
-        onExportJson={handleExportJson}
-        onExportPng={handleExportPng}
-        onUndo={() => dispatch({ type: 'UNDO' })}
-        onRedo={() => dispatch({ type: 'REDO' })}
-        onNewDocument={handleNewDocument}
-      />
-
+      <TopBar isDirty={state.isDirty} canUndo={canUndo} canRedo={canRedo} filename={filename} onFilenameChange={setFilename} onFiles={handleFiles} onImportJson={handleImportJson} onExportJson={handleExportJson} onExportPng={handleExportPng} onUndo={() => dispatch({ type: 'UNDO' })} onRedo={() => dispatch({ type: 'REDO' })} onNewDocument={handleNewDocument} />
       <ToolPanel />
       <CanvasWorkspace onFiles={handleFiles} onViewportChange={setViewport} />
       <ReviewPanel />
-      <StatusBar
-        tool={state.activeTool}
-        zoom={viewport.zoom}
-        imageCount={state.document.images.length}
-        commentCount={state.document.comments.length}
-        canvasSize={state.document.canvas}
-      />
-
+      <StatusBar tool={state.activeTool} zoom={viewport.zoom} imageCount={state.document.images.length} commentCount={state.document.comments.length} canvasSize={state.document.canvas} />
       {isBusy && <div className="busy-overlay" role="status"><span className="spinner" />処理中…</div>}
+      {state.modal === 'adjust' && <ImageAdjustModal />}
+      {state.modal === 'retouch' && <RetouchModal />}
       {notice && <div className="toast" role="status">{notice}</div>}
     </div>
   );
