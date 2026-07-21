@@ -1,5 +1,6 @@
 import { getOrderedComments, getOrderedLayers } from '../document/order';
 import type { AppState, ImageObject, Point, ShapeObject, ToolId } from '../document/types';
+import { sampleImageColor } from '../image-processing/colorAnalysis';
 import { createId } from '../utils/ids';
 import { drawShape } from './drawShape';
 
@@ -15,6 +16,7 @@ export type CanvasEngineOptions = {
   onCommitImagePosition: (id: string, x: number, y: number) => void;
   onCommitShape: (shape: ShapeObject) => void;
   onCommitShapePatch: (id: string, patch: Partial<ShapeObject>) => void;
+  onColorPicked: (color: string, imageId: string) => void;
   onViewportChange: (viewport: ViewportSnapshot) => void;
 };
 
@@ -172,9 +174,9 @@ export class CanvasEngine {
       if (box) {
         const drag = this.drag;
         if (selection.type === 'image' && drag?.mode === 'image' && drag.id === selection.id) {
-          this.drawSelection(drag.dx, drag.dy, (box as ImageObject).width, (box as ImageObject).height);
+          this.drawSelection(drag.dx, drag.dy, box.width, box.height);
         } else if (selection.type === 'shape' && drag?.mode === 'shape-move' && drag.id === selection.id) {
-          this.drawSelection(drag.dx, drag.dy, (box as ShapeObject).width, (box as ShapeObject).height);
+          this.drawSelection(drag.dx, drag.dy, box.width, box.height);
         } else {
           this.drawSelection(box.x, box.y, box.width, box.height);
         }
@@ -189,7 +191,6 @@ export class CanvasEngine {
         if (target) this.drawBadge(index + 1, target.x + 18, target.y + 18);
       });
     }
-
     ctx.restore();
   }
 
@@ -244,6 +245,27 @@ export class CanvasEngine {
     return null;
   }
 
+  private pickColor(point: Point) {
+    if (!this.state) return;
+    const imageObject = getOrderedLayers(this.state.document)
+      .reverse()
+      .find((entry) => entry.kind === 'image'
+        && entry.item.visible
+        && point.x >= entry.item.x
+        && point.x <= entry.item.x + entry.item.width
+        && point.y >= entry.item.y
+        && point.y <= entry.item.y + entry.item.height);
+    if (!imageObject || imageObject.kind !== 'image') return;
+    const image = this.getImage(imageObject.item);
+    if (!image?.complete || image.naturalWidth === 0) return;
+    const sourceX = ((point.x - imageObject.item.x) / imageObject.item.width) * image.naturalWidth;
+    const sourceY = ((point.y - imageObject.item.y) / imageObject.item.height) * image.naturalHeight;
+    const color = sampleImageColor(image, sourceX, sourceY);
+    if (!color) return;
+    this.options.onSelect({ type: 'image', id: imageObject.item.id });
+    this.options.onColorPicked(color, imageObject.item.id);
+  }
+
   private handlePointerDown = (event: PointerEvent) => {
     if (!this.state) return;
     const screen = this.screenPoint(event);
@@ -254,6 +276,10 @@ export class CanvasEngine {
     }
 
     const world = this.worldPoint(screen);
+    if (this.tool === 'eyedropper') {
+      this.pickColor(world);
+      return;
+    }
     if (this.tool === 'select') {
       const hit = this.hitTest(world);
       this.options.onSelect(hit ? { type: hit.kind, id: hit.item.id } : null);
@@ -270,7 +296,7 @@ export class CanvasEngine {
     const options = this.state.toolOptions;
     const shape: ShapeObject = {
       id: createId('shape'),
-      type: this.tool,
+      type: this.tool as ShapeObject['type'],
       x: world.x,
       y: world.y,
       width: 1,
@@ -316,7 +342,6 @@ export class CanvasEngine {
     const drag = this.drag;
     this.drag = null;
     if (this.canvas.hasPointerCapture(event.pointerId)) this.canvas.releasePointerCapture(event.pointerId);
-
     if (drag.mode === 'image') {
       this.options.onCommitImagePosition(drag.id, Math.round(drag.dx), Math.round(drag.dy));
     } else if (drag.mode === 'shape-move') {
