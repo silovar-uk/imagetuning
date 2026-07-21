@@ -8,6 +8,7 @@ import './styles/layout.css';
 import './styles/controls.css';
 import './styles/workspace.css';
 import './styles/modals.css';
+import './styles/review-export.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
