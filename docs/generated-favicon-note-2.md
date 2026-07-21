@@ -1,1 +1,0 @@
-Active favicon updated from the selected generated icon.
