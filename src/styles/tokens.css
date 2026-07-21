@@ -1,0 +1,24 @@
+:root {
+  color-scheme: light;
+  --font-sans: Inter, "Hiragino Sans", "Yu Gothic UI", "Yu Gothic", Meiryo, system-ui, sans-serif;
+  --bg-app: #e9e8e3;
+  --bg-panel: #f8f7f3;
+  --bg-panel-strong: #ffffff;
+  --bg-workspace: #d8d8d3;
+  --bg-muted: #efeee9;
+  --text-primary: #1c1d1a;
+  --text-secondary: #666963;
+  --text-tertiary: #8b8e87;
+  --border: #d4d4ce;
+  --border-strong: #bdbeb7;
+  --accent: #c42026;
+  --accent-hover: #a9181e;
+  --accent-soft: #f6e6e6;
+  --danger: #b42318;
+  --focus: #1f6feb;
+  --shadow-float: 0 12px 28px rgba(38, 39, 35, 0.16);
+  --radius-sm: 5px;
+  --radius-md: 9px;
+  --topbar-height: 64px;
+  --statusbar-height: 30px;
+}
