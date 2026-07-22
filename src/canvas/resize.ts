@@ -43,3 +43,23 @@ export function resizeShapeBounds(
   if (handle.includes('s')) bottom = Math.max(point.y, top + minimumSize);
   return { x: left, y: top, width: right - left, height: bottom - top };
 }
+
+export function scalePointsToBounds(
+  points: Point[],
+  original: ShapeBounds,
+  target: ShapeBounds,
+): Point[] {
+  const originalWidth = original.right - original.left;
+  const originalHeight = original.bottom - original.top;
+  const targetWidth = target.right - target.left;
+  const targetHeight = target.bottom - target.top;
+
+  return points.map((point) => {
+    const ratioX = originalWidth === 0 ? 0.5 : (point.x - original.left) / originalWidth;
+    const ratioY = originalHeight === 0 ? 0.5 : (point.y - original.top) / originalHeight;
+    return {
+      x: target.left + ratioX * targetWidth,
+      y: target.top + ratioY * targetHeight,
+    };
+  });
+}
