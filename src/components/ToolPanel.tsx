@@ -20,6 +20,7 @@ import {
 import { useEffect, useState } from 'react';
 import { useApp } from '../app/AppContext';
 import { selectSelectedImage, selectSelectedShape } from '../app/selectors';
+import { getShapeBounds, scalePointsToBounds } from '../canvas/resize';
 import type { ToolId } from '../document/types';
 import { analyzeImageSource, type ColorShare } from '../image-processing/colorAnalysis';
 
@@ -62,6 +63,32 @@ export function ToolPanel() {
     } finally {
       setIsAnalyzing(false);
     }
+  };
+
+  const resizeSelectedShape = (nextWidth: number, nextHeight: number) => {
+    if (!shape) return;
+    const width = Math.max(1, Math.round(nextWidth));
+    const height = Math.max(1, Math.round(nextHeight));
+    const original = getShapeBounds(shape);
+    const target = {
+      left: original.left,
+      top: original.top,
+      right: original.left + width,
+      bottom: original.top + height,
+    };
+    dispatch({
+      type: 'UPDATE_SHAPE',
+      shapeId: shape.id,
+      patch: {
+        x: target.left,
+        y: target.top,
+        width,
+        height,
+        ...(shape.type === 'pen' && shape.points
+          ? { points: scalePointsToBounds(shape.points, original, target) }
+          : {}),
+      },
+    });
   };
 
   return (
@@ -171,6 +198,14 @@ export function ToolPanel() {
               色
               <input type="color" value={shape.color} onChange={(event) => dispatch({ type: 'UPDATE_SHAPE', shapeId: shape.id, patch: { color: event.target.value } })} />
             </label>
+            <div className="field-group">
+              <div className="field-label-row"><label>サイズ</label><output>{Math.round(Math.abs(shape.width))} × {Math.round(Math.abs(shape.height))}px</output></div>
+              <div className="position-grid">
+                <label>W<input aria-label="図形の幅" type="number" min="1" value={Math.round(Math.abs(shape.width))} onChange={(event) => resizeSelectedShape(Number(event.target.value), Math.abs(shape.height))} /></label>
+                <label>H<input aria-label="図形の高さ" type="number" min="1" value={Math.round(Math.abs(shape.height))} onChange={(event) => resizeSelectedShape(Math.abs(shape.width), Number(event.target.value))} /></label>
+              </div>
+              {shape.type === 'pen' && <small className="field-note">ペン線の点列を比率変換して拡大・縮小します</small>}
+            </div>
             {(shape.type === 'text' || shape.type === 'speech-bubble') && (
               <textarea value={shape.text ?? ''} onChange={(event) => dispatch({ type: 'UPDATE_SHAPE', shapeId: shape.id, patch: { text: event.target.value } })} />
             )}

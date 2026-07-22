@@ -12,6 +12,7 @@ import './styles/review-export.css';
 import './styles/planned-features.css';
 import './styles/resize-layer.css';
 import './styles/history.css';
+import './styles/shape-size.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
