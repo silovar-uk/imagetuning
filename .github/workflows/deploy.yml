@@ -40,7 +40,13 @@ jobs:
             test.log
             build.log
       - run: npx playwright install --with-deps chromium
-      - run: npm run test:e2e
+      - name: Generate visual baseline and run browser tests
+        run: npm run test:e2e -- --update-snapshots
+      - name: Upload visual baseline
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-regression-baseline
+          path: e2e/**/*-snapshots/*.png
       - uses: actions/configure-pages@v5
         if: github.event_name != 'pull_request'
       - uses: actions/upload-pages-artifact@v3
