@@ -31,6 +31,10 @@ jobs:
       - name: Type check and build
         shell: bash
         run: set -o pipefail; npm run build 2>&1 | tee build.log
+      - run: npx playwright install --with-deps chromium
+      - name: Generate visual baseline and run browser tests
+        shell: bash
+        run: set -o pipefail; npm run test:e2e -- --update-snapshots 2>&1 | tee playwright.log
       - name: Upload failure diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
@@ -39,13 +43,14 @@ jobs:
           path: |
             test.log
             build.log
-      - run: npx playwright install --with-deps chromium
-      - name: Generate visual baseline and run browser tests
-        run: npm run test:e2e -- --update-snapshots
+            playwright.log
+            test-results
       - name: Upload visual baseline
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: visual-regression-baseline
+          if-no-files-found: ignore
           path: e2e/**/*-snapshots/*.png
       - uses: actions/configure-pages@v5
         if: github.event_name != 'pull_request'
