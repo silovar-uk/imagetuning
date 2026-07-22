@@ -1,0 +1,10 @@
+.field-note {
+  display: block;
+  color: var(--text-tertiary);
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.position-grid input[type="number"] {
+  width: 100%;
+}
