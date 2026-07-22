@@ -1,0 +1,49 @@
+.pen-resize-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.pen-resize-preview {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  opacity: 0.72;
+  pointer-events: none;
+}
+
+.pen-resize-handle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 11px;
+  height: 11px;
+  margin: -5.5px 0 0 -5.5px;
+  border: 2px solid var(--accent);
+  border-radius: 2px;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(20, 25, 21, 0.2);
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.pen-resize-handle.is-nw,
+.pen-resize-handle.is-se {
+  cursor: nwse-resize;
+}
+
+.pen-resize-handle.is-ne,
+.pen-resize-handle.is-sw {
+  cursor: nesw-resize;
+}
+
+.pen-resize-handle:hover,
+.pen-resize-handle:focus-visible {
+  background: var(--accent-soft);
+  outline: none;
+  transform-origin: center;
+}
