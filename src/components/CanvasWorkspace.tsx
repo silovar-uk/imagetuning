@@ -1,18 +1,27 @@
 import { ImagePlus, Maximize2, ScanSearch } from 'lucide-react';
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApp } from '../app/AppContext';
 import { CanvasEngine, type ViewportSnapshot } from '../canvas/CanvasEngine';
+import { PenResizeOverlay } from './PenResizeOverlay';
 
 type Props = {
   onFiles: (files: File[]) => void;
   onViewportChange: (viewport: ViewportSnapshot) => void;
 };
 
+const initialViewport: ViewportSnapshot = { zoom: 1, offsetX: 0, offsetY: 0 };
+
 export function CanvasWorkspace({ onFiles, onViewportChange }: Props) {
   const { state, dispatch } = useApp();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<CanvasEngine | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [viewport, setViewport] = useState<ViewportSnapshot>(initialViewport);
+
+  const reportViewport = useCallback((nextViewport: ViewportSnapshot) => {
+    setViewport(nextViewport);
+    onViewportChange(nextViewport);
+  }, [onViewportChange]);
 
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -22,16 +31,21 @@ export function CanvasWorkspace({ onFiles, onViewportChange }: Props) {
       onCommitShape: (shape) => dispatch({ type: 'ADD_SHAPE', shape }),
       onCommitShapePatch: (id, patch) => dispatch({ type: 'UPDATE_SHAPE', shapeId: id, patch }),
       onColorPicked: (color) => dispatch({ type: 'SET_TOOL_OPTIONS', patch: { color } }),
-      onViewportChange,
+      onViewportChange: reportViewport,
     });
     engineRef.current = engine;
     return () => {
       engine.destroy();
       engineRef.current = null;
     };
-  }, [dispatch, onViewportChange]);
+  }, [dispatch, reportViewport]);
 
   useEffect(() => engineRef.current?.setState(state), [state]);
+
+  const selectedPen = state.selection?.type === 'shape'
+    ? state.document.shapes.find((shape) => shape.id === state.selection?.id && shape.type === 'pen') ?? null
+    : null;
+  const isEmpty = state.document.images.length === 0 && state.document.shapes.length === 0;
 
   return (
     <main
@@ -48,7 +62,14 @@ export function CanvasWorkspace({ onFiles, onViewportChange }: Props) {
       }}
     >
       <canvas ref={canvasRef} className={`editor-canvas tool-${state.activeTool}`} />
-      {!state.document.images.length && (
+      {selectedPen && state.activeTool === 'select' && !selectedPen.locked && selectedPen.visible && (
+        <PenResizeOverlay
+          shape={selectedPen}
+          viewport={viewport}
+          onCommit={(patch) => dispatch({ type: 'UPDATE_SHAPE', shapeId: selectedPen.id, patch })}
+        />
+      )}
+      {isEmpty && (
         <button className="empty-state" onClick={() => fileInputRef.current?.click()}>
           <span className="empty-state-icon"><ImagePlus size={32} /></span>
           <strong>画像をここにドロップ</strong>

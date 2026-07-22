@@ -13,6 +13,7 @@ import './styles/planned-features.css';
 import './styles/resize-layer.css';
 import './styles/history.css';
 import './styles/shape-size.css';
+import './styles/pen-resize.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

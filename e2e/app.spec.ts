@@ -13,6 +13,49 @@ async function uploadSampleImage(page: Page) {
   await expect(page.getByText('sample.png', { exact: true })).toBeVisible();
 }
 
+function penDocument() {
+  return {
+    schemaVersion: 2,
+    canvas: { width: 400, height: 300, background: 'white', numberingMode: 'position' },
+    images: [],
+    shapes: [{
+      id: 'pen-1',
+      type: 'pen',
+      x: 10,
+      y: 20,
+      width: 100,
+      height: 100,
+      color: '#C42026',
+      lineWidth: 4,
+      lineStyle: 'solid',
+      points: [{ x: 10, y: 20 }, { x: 60, y: 70 }, { x: 110, y: 120 }],
+      zIndex: 0,
+      visible: true,
+      locked: false,
+    }],
+    comments: [],
+  };
+}
+
+async function loadPenDocument(page: Page) {
+  await page.locator('input[type="file"][accept*="application/json"]').setInputFiles({
+    name: 'pen-document.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify(penDocument())),
+  });
+  await page.getByRole('button', { name: /レイヤー 1/ }).click();
+  await page.locator('.layer-item').click();
+}
+
+async function readDownloadedJson(page: Page) {
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByTitle('JSONを書き出す').click();
+  const download = await downloadPromise;
+  const downloadPath = await download.path();
+  expect(downloadPath).not.toBeNull();
+  return JSON.parse(await readFile(downloadPath!, 'utf8'));
+}
+
 test.beforeEach(async ({ page }) => {
   await page.goto('/imagetuning/');
   await expect(page.getByRole('heading', { name: 'Image Tuning' })).toBeVisible();
@@ -61,51 +104,43 @@ test('画像修正モーダルで編集モードと履歴状態を確認でき�
 });
 
 test('ペン線の幅変更で点列も比率変換される', async ({ page }) => {
-  const document = {
-    schemaVersion: 2,
-    canvas: { width: 400, height: 300, background: 'white', numberingMode: 'position' },
-    images: [],
-    shapes: [{
-      id: 'pen-1',
-      type: 'pen',
-      x: 10,
-      y: 20,
-      width: 100,
-      height: 100,
-      color: '#C42026',
-      lineWidth: 4,
-      lineStyle: 'solid',
-      points: [{ x: 10, y: 20 }, { x: 60, y: 70 }, { x: 110, y: 120 }],
-      zIndex: 0,
-      visible: true,
-      locked: false,
-    }],
-    comments: [],
-  };
-
-  await page.locator('input[type="file"][accept*="application/json"]').setInputFiles({
-    name: 'pen-document.json',
-    mimeType: 'application/json',
-    buffer: Buffer.from(JSON.stringify(document)),
-  });
-  await page.getByRole('button', { name: /レイヤー 1/ }).click();
-  await page.locator('.layer-item').click();
+  await loadPenDocument(page);
 
   const widthInput = page.getByLabel('図形の幅');
   await expect(widthInput).toHaveValue('100');
   await widthInput.fill('200');
   await expect(widthInput).toHaveValue('200');
 
-  const downloadPromise = page.waitForEvent('download');
-  await page.getByTitle('JSONを書き出す').click();
-  const download = await downloadPromise;
-  const downloadPath = await download.path();
-  expect(downloadPath).not.toBeNull();
-  const exported = JSON.parse(await readFile(downloadPath!, 'utf8'));
+  const exported = await readDownloadedJson(page);
   expect(exported.shapes[0].width).toBe(200);
   expect(exported.shapes[0].points).toEqual([
     { x: 10, y: 20 },
     { x: 110, y: 70 },
     { x: 210, y: 120 },
   ]);
+});
+
+test('ペン線をキャンバス上の四隅ハンドルからリサイズできる', async ({ page }) => {
+  await loadPenDocument(page);
+
+  const handle = page.locator('.pen-resize-handle[data-handle="se"]');
+  await expect(handle).toBeVisible();
+  const box = await handle.boundingBox();
+  expect(box).not.toBeNull();
+
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box!.x + box!.width / 2 + 100, box!.y + box!.height / 2 + 50, { steps: 8 });
+  await page.mouse.up();
+
+  const exported = await readDownloadedJson(page);
+  const resized = exported.shapes[0];
+  expect(resized.width).toBeGreaterThanOrEqual(195);
+  expect(resized.width).toBeLessThanOrEqual(205);
+  expect(resized.height).toBeGreaterThanOrEqual(145);
+  expect(resized.height).toBeLessThanOrEqual(155);
+  expect(resized.points[0]).toEqual({ x: 10, y: 20 });
+  expect(resized.points[2]).toEqual({ x: 10 + resized.width, y: 20 + resized.height });
+  expect(Math.abs(resized.points[1].x - (10 + resized.width / 2))).toBeLessThanOrEqual(1);
+  expect(Math.abs(resized.points[1].y - (20 + resized.height / 2))).toBeLessThanOrEqual(1);
 });
