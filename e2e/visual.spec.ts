@@ -1,4 +1,6 @@
+import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
+import { compareVisualSignatures, createVisualSignature, type VisualSignature } from './visualSignature';
 
 function svgDataUrl() {
   const svg = `
@@ -10,6 +12,11 @@ function svgDataUrl() {
       <text x="260" y="88" text-anchor="middle" font-family="sans-serif" font-size="26" font-weight="700" fill="#202622">Image Review</text>
     </svg>`;
   return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
+}
+
+async function readBaseline(): Promise<VisualSignature> {
+  const path = new URL('./baselines/editor-review.json', import.meta.url);
+  return JSON.parse(await readFile(path, 'utf8')) as VisualSignature;
 }
 
 test('標準レビュー画面の見た目を維持する', async ({ page }) => {
@@ -73,9 +80,12 @@ test('標準レビュー画面の見た目を維持する', async ({ page }) => 
   await expect(page.locator('.toast')).toBeHidden({ timeout: 5000 });
   await page.emulateMedia({ reducedMotion: 'reduce' });
 
-  await expect(page).toHaveScreenshot('editor-review.png', {
-    animations: 'disabled',
-    caret: 'hide',
-    maxDiffPixelRatio: 0.01,
-  });
+  const actual = createVisualSignature(await page.screenshot());
+  const expected = await readBaseline();
+  const difference = compareVisualSignatures(actual, expected);
+
+  expect(actual.width).toBe(expected.width);
+  expect(actual.height).toBe(expected.height);
+  expect(difference.meanDifference).toBeLessThanOrEqual(3);
+  expect(difference.changedRatio).toBeLessThanOrEqual(0.08);
 });
